@@ -296,6 +296,35 @@ class TestCase extends Orchestra
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
+    /**
+     * Provision an additional, fully isolated database connection (its own
+     * in-memory SQLite database) and run the permission tables migration on
+     * it, to emulate a multi-schema / multi-database application.
+     */
+    public function setUpSecondSchema(string $connection = 'sqlite2'): void
+    {
+        config()->set("database.connections.{$connection}", array_merge(
+            config('database.connections.sqlite'),
+            []
+        ));
+
+        $originalDefault = config('database.default');
+
+        // Point the default connection (used by the migration's Schema calls)
+        // at the second connection while we build its schema.
+        config()->set('database.default', $connection);
+
+        $this->app['db']->connection($connection)->getSchemaBuilder()
+            ->create('customers', function (Blueprint $table) {
+                $table->increments('id');
+                $table->string('email');
+            });
+
+        self::$migration->up();
+
+        config()->set('database.default', $originalDefault);
+    }
+
     public function createCacheTable(): void
     {
         Schema::create('cache', function ($table) {

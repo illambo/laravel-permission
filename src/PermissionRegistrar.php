@@ -28,6 +28,23 @@ class PermissionRegistrar
 
     protected Collection|array|null $permissions = null;
 
+    /**
+     * Loaded permission collections, keyed by context (see cacheContext()).
+     * Keeping one bucket per context allows the package to be used across
+     * multiple databases/schemas within the same request without one context
+     * serving another's cached permissions.
+     *
+     * @var array<string, Collection>
+     */
+    protected array $permissionsByContext = [];
+
+    /**
+     * The effective cache keys that have been used, keyed by context.
+     *
+     * @var array<string, string>
+     */
+    private array $cacheKeysByContext = [];
+
     public string $pivotRole;
 
     public string $pivotPermission;
@@ -131,9 +148,22 @@ class PermissionRegistrar
     public function forgetCachedPermissions(): bool
     {
         $this->permissions = null;
+        $this->permissionsByContext = [];
         $this->forgetWildcardPermissionIndex();
 
-        return $this->cache->forget($this->cacheKey);
+        // Forget every context-specific cache key we have touched, plus the
+        // current context's key (which may not have been loaded yet). Falls
+        // back to the base key when no context has been resolved.
+        $keys = $this->cacheKeysByContext;
+        $keys[$this->cacheContext()] = $this->contextCacheKey();
+        $this->cacheKeysByContext = [];
+
+        $forgotten = true;
+        foreach (array_unique($keys ?: [$this->cacheKey]) as $key) {
+            $forgotten = $this->cache->forget($key) && $forgotten;
+        }
+
+        return $forgotten;
     }
 
     public function forgetWildcardPermissionIndex(?Model $record = null): void
@@ -164,8 +194,35 @@ class PermissionRegistrar
     public function clearPermissionsCollection(): void
     {
         $this->permissions = null;
+        $this->permissionsByContext = [];
         $this->wildcardPermissionsIndex = [];
         $this->isLoadingPermissions = false;
+    }
+
+    /**
+     * The isolation boundary for the permissions cache.
+     *
+     * For multi-schema / multi-database setups the boundary is the database
+     * connection backing the active permission model, so two models on
+     * different connections never share a cached collection or cache key.
+     */
+    protected function cacheContext(): string
+    {
+        return (new ($this->permissionClass))->getConnectionName() ?? (string) config('database.default');
+    }
+
+    /**
+     * The cache key for the current context. The default connection keeps the
+     * bare configured key for backwards compatibility; other connections get a
+     * namespaced key.
+     */
+    protected function contextCacheKey(): string
+    {
+        $context = $this->cacheContext();
+
+        return $context === (string) config('database.default')
+            ? $this->cacheKey
+            : $this->cacheKey.'.'.$context;
     }
 
     /**
@@ -177,8 +234,12 @@ class PermissionRegistrar
      */
     private function loadPermissions(int $retries = 0): void
     {
-        // First check (without lock) - fast path for already loaded permissions
-        if ($this->permissions) {
+        $context = $this->cacheContext();
+
+        // First check (without lock) - fast path for a context already loaded
+        if (isset($this->permissionsByContext[$context])) {
+            $this->permissions = $this->permissionsByContext[$context];
+
             return;
         }
 
@@ -199,8 +260,11 @@ class PermissionRegistrar
         $this->isLoadingPermissions = true;
 
         try {
+            $cacheKey = $this->contextCacheKey();
+            $this->cacheKeysByContext[$context] = $cacheKey;
+
             $this->permissions = $this->cache->remember(
-                $this->cacheKey, $this->cacheExpirationTime, fn () => $this->getSerializedPermissionsForCache()
+                $cacheKey, $this->cacheExpirationTime, fn () => $this->getSerializedPermissionsForCache()
             );
 
             $this->alias = $this->permissions['alias'];
@@ -210,6 +274,8 @@ class PermissionRegistrar
             $this->permissions = $this->getHydratedPermissionCollection();
 
             $this->cachedRoles = $this->alias = $this->except = [];
+
+            $this->permissionsByContext[$context] = $this->permissions;
         } finally {
             // Always release the loading flag, even if an exception occurs
             $this->isLoadingPermissions = false;

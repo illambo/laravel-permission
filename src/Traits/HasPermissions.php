@@ -49,10 +49,23 @@ trait HasPermissions
         });
     }
 
+    /**
+     * Resolve the PermissionRegistrar used by this model.
+     *
+     * Centralising access through this method (rather than calling the
+     * container inline) gives a single, overridable seam: a model can return
+     * a context-specific registrar, e.g. when the package is used across
+     * multiple databases/schemas. By default it resolves the shared instance.
+     */
+    public function getPermissionRegistrar(): PermissionRegistrar
+    {
+        return app(PermissionRegistrar::class);
+    }
+
     public function getPermissionClass(): string
     {
         if (! $this->permissionClass) {
-            $this->permissionClass = app(PermissionRegistrar::class)->getPermissionClass();
+            $this->permissionClass = $this->getPermissionRegistrar()->getPermissionClass();
         }
 
         return $this->permissionClass;
@@ -83,11 +96,11 @@ trait HasPermissions
     public function permissions(): BelongsToMany
     {
         $relation = $this->morphToMany(
-            Config::permissionModel(),
+            $this->getPermissionClass(),
             'model',
             Config::modelHasPermissionsTable(),
             Config::morphKey(),
-            app(PermissionRegistrar::class)->pivotPermission
+            $this->getPermissionRegistrar()->pivotPermission
         );
 
         if (! Config::teamsEnabled()) {

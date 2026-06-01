@@ -44,7 +44,7 @@ trait HasRoles
     public function getRoleClass(): string
     {
         if (! $this->roleClass) {
-            $this->roleClass = app(PermissionRegistrar::class)->getRoleClass();
+            $this->roleClass = $this->getPermissionRegistrar()->getRoleClass();
         }
 
         return $this->roleClass;
@@ -56,11 +56,11 @@ trait HasRoles
     public function roles(): BelongsToMany
     {
         $relation = $this->morphToMany(
-            Config::roleModel(),
+            $this->getRoleClass(),
             'model',
             Config::modelHasRolesTable(),
             Config::morphKey(),
-            app(PermissionRegistrar::class)->pivotRole
+            $this->getPermissionRegistrar()->pivotRole
         );
 
         if (! Config::teamsEnabled()) {
