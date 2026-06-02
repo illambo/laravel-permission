@@ -31,13 +31,14 @@ trait HasRoles
                 return;
             }
 
-            $teams = app(PermissionRegistrar::class)->teams;
-            app(PermissionRegistrar::class)->teams = false;
+            $registrar = app(PermissionRegistrar::class);
+            $teamsOverride = $registrar->teamsOverride;
+            $registrar->teamsOverride = false;
             $model->roles()->detach();
             if ($model instanceof Permission) {
                 $model->users()->detach();
             }
-            app(PermissionRegistrar::class)->teams = $teams;
+            $registrar->teamsOverride = $teamsOverride;
         });
     }
 
@@ -63,11 +64,11 @@ trait HasRoles
             $this->getPermissionRegistrar()->pivotRole
         );
 
-        if (! Config::teamsEnabled()) {
+        if (! $this->permissionsTeamsEnabled()) {
             return $relation;
         }
 
-        $teamsKey = Config::teamForeignKey();
+        $teamsKey = $this->permissionsTeamForeignKey();
         $relation->withPivot($teamsKey);
         $teamField = Config::rolesTable().'.'.$teamsKey;
 
@@ -124,13 +125,13 @@ trait HasRoles
      */
     public function teams(): BelongsToMany
     {
-        if (! Config::teamsEnabled()) {
+        if (! $this->permissionsTeamsEnabled()) {
             return $this->morphToMany(
                 Config::permissionModel(),
                 'model',
                 Config::modelHasRolesTable(),
                 Config::morphKey(),
-                Config::teamForeignKey()
+                $this->permissionsTeamForeignKey()
             )->whereRaw('1 = 0');
         }
 
@@ -139,7 +140,7 @@ trait HasRoles
             'model',
             Config::modelHasRolesTable(),
             Config::morphKey(),
-            Config::teamForeignKey()
+            $this->permissionsTeamForeignKey()
         )->distinct();
     }
 
@@ -163,7 +164,7 @@ trait HasRoles
 
         $pivotTable = Config::modelHasRolesTable();
         $morphKey = Config::morphKey();
-        $teamsKey = Config::teamForeignKey();
+        $teamsKey = $this->permissionsTeamForeignKey();
 
         return $query->{! $without ? 'whereExists' : 'whereNotExists'}(
             fn ($subQuery) => $subQuery
@@ -220,11 +221,11 @@ trait HasRoles
         $roles = $this->collectRoles($roles);
 
         $model = $this->getModel();
-        $teamPivot = app(PermissionRegistrar::class)->teams && ! $this instanceof Permission ?
-            [app(PermissionRegistrar::class)->teamsKey => getPermissionsTeamId()] : [];
+        $teamPivot = $this->permissionsTeamsEnabled() && ! $this instanceof Permission ?
+            [$this->permissionsTeamForeignKey() => getPermissionsTeamId()] : [];
 
         if ($model->exists) {
-            if (app(PermissionRegistrar::class)->teams) {
+            if ($this->permissionsTeamsEnabled()) {
                 // explicit reload in case team has been changed since last load
                 $this->load('roles');
             }

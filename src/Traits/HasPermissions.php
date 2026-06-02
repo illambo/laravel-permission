@@ -37,15 +37,16 @@ trait HasPermissions
                 return;
             }
 
-            $teams = app(PermissionRegistrar::class)->teams;
-            app(PermissionRegistrar::class)->teams = false;
+            $registrar = app(PermissionRegistrar::class);
+            $teamsOverride = $registrar->teamsOverride;
+            $registrar->teamsOverride = false;
             if (! $model instanceof Permission) {
                 $model->permissions()->detach();
             }
             if ($model instanceof Role) {
                 $model->users()->detach();
             }
-            app(PermissionRegistrar::class)->teams = $teams;
+            $registrar->teamsOverride = $teamsOverride;
         });
     }
 
@@ -60,6 +61,24 @@ trait HasPermissions
     public function getPermissionRegistrar(): PermissionRegistrar
     {
         return app(PermissionRegistrar::class);
+    }
+
+    /**
+     * Whether the teams feature is enabled for this model's connection.
+     * Resolves per-connection config, so a model on a connection configured
+     * without teams behaves correctly even if another connection uses teams.
+     */
+    public function permissionsTeamsEnabled(): bool
+    {
+        return $this->getPermissionRegistrar()->teamsEnabledFor($this->getConnectionName());
+    }
+
+    /**
+     * The team foreign key column name for this model's connection.
+     */
+    public function permissionsTeamForeignKey(): string
+    {
+        return $this->getPermissionRegistrar()->teamForeignKeyFor($this->getConnectionName());
     }
 
     public function getPermissionClass(): string
@@ -103,11 +122,11 @@ trait HasPermissions
             $this->getPermissionRegistrar()->pivotPermission
         );
 
-        if (! Config::teamsEnabled()) {
+        if (! $this->permissionsTeamsEnabled()) {
             return $relation;
         }
 
-        $teamsKey = Config::teamForeignKey();
+        $teamsKey = $this->permissionsTeamForeignKey();
         $relation->withPivot($teamsKey);
 
         return $relation->wherePivot($teamsKey, getPermissionsTeamId());
@@ -402,8 +421,8 @@ trait HasPermissions
         $permissions = $this->collectPermissions($permissions);
 
         $model = $this->getModel();
-        $teamPivot = app(PermissionRegistrar::class)->teams && ! $this instanceof Role ?
-            [app(PermissionRegistrar::class)->teamsKey => getPermissionsTeamId()] : [];
+        $teamPivot = $this->permissionsTeamsEnabled() && ! $this instanceof Role ?
+            [$this->permissionsTeamForeignKey() => getPermissionsTeamId()] : [];
 
         if ($model->exists) {
             $currentPermissions = $this->permissions->map(fn ($permission) => $permission->getKey())->toArray();

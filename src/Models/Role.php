@@ -61,9 +61,10 @@ class Role extends Model implements RoleContract
         $params = ['name' => $attributes['name'], 'guard_name' => $attributes['guard_name']];
 
         $registrar = app(PermissionRegistrar::class);
+        $connection = (new static)->getConnectionName();
 
-        if ($registrar->teams) {
-            $teamsKey = $registrar->teamsKey;
+        if ($registrar->teamsEnabledFor($connection)) {
+            $teamsKey = $registrar->teamForeignKeyFor($connection);
 
             if (array_key_exists($teamsKey, $attributes)) {
                 $params[$teamsKey] = $attributes[$teamsKey];
@@ -163,8 +164,9 @@ class Role extends Model implements RoleContract
 
         if (! $role) {
             $registrar = app(PermissionRegistrar::class);
-            if ($registrar->teams) {
-                $teamsKey = $registrar->teamsKey;
+            $connection = (new static)->getConnectionName();
+            if ($registrar->teamsEnabledFor($connection)) {
+                $teamsKey = $registrar->teamForeignKeyFor($connection);
                 $attributes[$teamsKey] = getPermissionsTeamId();
             }
 
@@ -184,9 +186,10 @@ class Role extends Model implements RoleContract
         $query = static::query();
 
         $registrar = app(PermissionRegistrar::class);
+        $connection = (new static)->getConnectionName();
 
-        if ($registrar->teams) {
-            $teamsKey = $registrar->teamsKey;
+        if ($registrar->teamsEnabledFor($connection)) {
+            $teamsKey = $registrar->teamForeignKeyFor($connection);
 
             $query->where(fn ($q) => $q->whereNull($teamsKey)
                 ->orWhere($teamsKey, $params[$teamsKey] ?? getPermissionsTeamId())

@@ -133,11 +133,11 @@ trait HasAssignedModels
      */
     private function teamPivot(): array
     {
-        if (! Config::teamsEnabled()) {
+        if (! $this->permissionsTeamsEnabled()) {
             return [];
         }
 
-        return [Config::teamForeignKey() => getPermissionsTeamId()];
+        return [$this->permissionsTeamForeignKey() => getPermissionsTeamId()];
     }
 
     private function newPivotQueryForRole(): Builder

@@ -53,6 +53,12 @@ class PermissionRegistrar
 
     public bool $teams;
 
+    /**
+     * Transient override for the teams flag, honored regardless of connection.
+     * Used to temporarily disable team scoping (e.g. during cascade deletes).
+     */
+    public ?bool $teamsOverride = null;
+
     protected PermissionsTeamResolver $teamResolver;
 
     public string $teamsKey;
@@ -159,7 +165,7 @@ class PermissionRegistrar
         $this->cacheKeysByContext = [];
 
         $forgotten = true;
-        foreach (array_unique($keys ?: [$this->cacheKey]) as $key) {
+        foreach (array_unique($keys) as $key) {
             $forgotten = $this->cache->forget($key) && $forgotten;
         }
 
@@ -223,6 +229,44 @@ class PermissionRegistrar
         return $context === (string) config('database.default')
             ? $this->cacheKey
             : $this->cacheKey.'.'.$context;
+    }
+
+    /**
+     * Look up a per-connection configuration override.
+     *
+     * Any key from the package config may be overridden for a specific
+     * connection via `permission.connections.<connection>.<key>`. Returns null
+     * when no override exists, so callers can fall back to the base value.
+     */
+    public function connectionConfig(?string $connection, string $key): mixed
+    {
+        $name = $connection ?? (string) config('database.default');
+
+        return config("permission.connections.{$name}.{$key}");
+    }
+
+    /**
+     * Whether the teams feature is enabled for the given connection.
+     *
+     * A transient override (see $teamsOverride) takes precedence. Otherwise a
+     * per-connection override is used when present, falling back to the live
+     * base value so the default connection behaves exactly as before.
+     */
+    public function teamsEnabledFor(?string $connection): bool
+    {
+        if ($this->teamsOverride !== null) {
+            return $this->teamsOverride;
+        }
+
+        return (bool) ($this->connectionConfig($connection, 'teams') ?? $this->teams);
+    }
+
+    /**
+     * The team foreign key column name for the given connection.
+     */
+    public function teamForeignKeyFor(?string $connection): string
+    {
+        return $this->connectionConfig($connection, 'column_names.team_foreign_key') ?? $this->teamsKey;
     }
 
     /**

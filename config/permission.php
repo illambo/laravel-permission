@@ -151,6 +151,25 @@ return [
     'teams' => false,
 
     /*
+     * Per-connection configuration overrides.
+     *
+     * Any key from this config file may be overridden for a specific database
+     * connection. Models resolve their settings from the connection that backs
+     * them, falling back to the values above. This lets the package run with a
+     * different configuration per connection (e.g. a central database without
+     * teams alongside per-tenant databases with teams enabled) without mutating
+     * configuration at runtime. When empty, behaviour is unchanged.
+     *
+     * Example:
+     *   'connections' => [
+     *       'tenant' => [
+     *           'teams' => true,
+     *       ],
+     *   ],
+     */
+    'connections' => [],
+
+    /*
      * The class to use to resolve the permissions team id
      */
     'team_resolver' => DefaultTeamResolver::class,

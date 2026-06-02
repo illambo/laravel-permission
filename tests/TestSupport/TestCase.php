@@ -301,7 +301,7 @@ class TestCase extends Orchestra
      * in-memory SQLite database) and run the permission tables migration on
      * it, to emulate a multi-schema / multi-database application.
      */
-    public function setUpSecondSchema(string $connection = 'sqlite2'): void
+    public function setUpSecondSchema(string $connection = 'sqlite2', bool $teamsEnabled = false): void
     {
         config()->set("database.connections.{$connection}", array_merge(
             config('database.connections.sqlite'),
@@ -309,10 +309,14 @@ class TestCase extends Orchestra
         ));
 
         $originalDefault = config('database.default');
+        $originalTeams = config('permission.teams');
 
         // Point the default connection (used by the migration's Schema calls)
-        // at the second connection while we build its schema.
+        // at the second connection while we build its schema. The teams flag is
+        // read by the migration to decide whether to add the team foreign key
+        // columns, so toggle it for the duration of the migration only.
         config()->set('database.default', $connection);
+        config()->set('permission.teams', $teamsEnabled);
 
         $this->app['db']->connection($connection)->getSchemaBuilder()
             ->create('customers', function (Blueprint $table) {
@@ -323,6 +327,7 @@ class TestCase extends Orchestra
         self::$migration->up();
 
         config()->set('database.default', $originalDefault);
+        config()->set('permission.teams', $originalTeams);
     }
 
     public function createCacheTable(): void

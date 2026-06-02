@@ -13,7 +13,7 @@ class Config
 {
     public static function teamsEnabled(): bool
     {
-        return app(PermissionRegistrar::class)->teams;
+        return app(PermissionRegistrar::class)->teamsEnabledFor(null);
     }
 
     public static function ensureTeamsEnabled(): void
@@ -71,7 +71,7 @@ class Config
 
     public static function teamForeignKey(): string
     {
-        return app(PermissionRegistrar::class)->teamsKey;
+        return app(PermissionRegistrar::class)->teamForeignKeyFor(null);
     }
 
     /**
